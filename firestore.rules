@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function self(uid) { return signedIn() && request.auth.uid == uid; }
+    function admin() { return signedIn() && request.auth.token.admin == true; }
+    match /users/{uid} {
+      allow read: if self(uid) || admin();
+      allow create: if self(uid) && request.resource.data.role in ['customer','driver'];
+      allow update: if self(uid)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.isActive == resource.data.isActive
+        && request.resource.data.isBlocked == resource.data.isBlocked
+        && request.resource.data.walletBalance == resource.data.walletBalance
+        && request.resource.data.activationFeePaid == resource.data.activationFeePaid;
+      allow delete: if admin();
+      match /tokens/{tokenId} { allow read,write: if self(uid) || admin(); }
+    }
+    match /orders/{id} {
+      allow read: if admin() || (signedIn() && ((resource.data.customerId == request.auth.uid) || (resource.data.driverId == request.auth.uid) || (resource.data.status == 'pending' && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'driver')));
+      allow create, update, delete: if admin();
+    }
+    match /topups/{id} {
+      allow read: if admin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if admin();
+    }
+    match /withdrawals/{id} {
+      allow read: if admin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if admin();
+    }
+    match /transactions/{id} { allow read: if admin() || (signedIn() && resource.data.userId == request.auth.uid); allow write: if false; }
+    match /support/{id} {
+      allow read: if admin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if admin();
+    }
+    match /settings/{id} { allow read: if signedIn(); allow write: if admin(); }
+    match /ratings/{id} { allow read: if admin() || (signedIn() && (resource.data.customerId == request.auth.uid || resource.data.driverId == request.auth.uid)); allow create, update, delete: if admin(); }
+  }
+}
